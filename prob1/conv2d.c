@@ -23,12 +23,15 @@ Assume the stride is always 1. Use solely the primitive scalar operations (i.e.,
 #include <iostream>
 #include <algorithm>
 #include "assert.h"
+
+#include "preprocessing/im2col.h"
+#include "preprocessing/col2im.h"
 using namespace std;
 
 float *input, *kernel, *output;
+float *input_col, *output_col;
 int N, H, W, C;
 int KH, KW, OC, IC;
-int OH, OW;
 
 //  reads binary data from given files to input and kernel arrays
 void read_data(const char *input_file, const char *kernel_file){
@@ -71,9 +74,11 @@ void read_data(const char *input_file, const char *kernel_file){
 
     //  allocate arrays
     input = (float *)malloc(N*H*W*C*4);
-    kernel = (float *)malloc(KH*KW*OC*IC*4);
+    //  A is (KH*KW*C) * (N*H*W) matrix
+    input_col = (float *)malloc((KH*KW*C) * (N*H*W) * 4);
+    int pad = (KH - 1)/2;
 
-    //  read arrays
+    //  read input image
     input_read += fread(input, 4, N*H*W*C, in);
     if (input_read != N*H*W*C + 4){
         printf("Could not write dimensions, written elems = %d", input_read);
@@ -84,6 +89,12 @@ void read_data(const char *input_file, const char *kernel_file){
         exit(3);
     }
 
+    // apply im2col algorithm
+    im2col_cpu(input, C, H, W, KH, 1, pad, input_col);
+    freae(input);
+
+    // read filters
+    kernel = (float *)malloc(KH*KW*OC*IC*4);
     kernel_read += fread(kernel, 4, KH*KW*OC*IC, kern);
     if (kernel_read != KH*KW*OC*IC + 4){
         printf("Could not write dimensions, written elems = %d", kernel_read);
@@ -113,8 +124,8 @@ void write_data(const char *output_file){
     
     //  write output dimensions
     elems_written += fwrite(&N, 4, 1, out);
-    elems_written += fwrite(&OH, 4, 1, out);
-    elems_written += fwrite(&OW, 4, 1, out);
+    elems_written += fwrite(&H, 4, 1, out);
+    elems_written += fwrite(&W, 4, 1, out);
     elems_written += fwrite(&OC, 4, 1, out);
     if (elems_written != 4){
         printf("Could not write dimensions, written elems = %d", elems_written);
@@ -123,37 +134,62 @@ void write_data(const char *output_file){
     }
 
     //  write output matrix
-    elems_written += fwrite(output, 4, N*OH*OW*OC, out);
-    if (elems_written != N*OH*OW*OC + 4){
+    elems_written += fwrite(output, 4, N*H*W*OC, out);
+    if (elems_written != N*H*W*OC + 4){
         printf("Could not write dimensions, written elems = %d", elems_written);
         fclose(out);
         exit(2);
     }
 
     fclose(out);
+    free(output);
 }
 
 //  convolution operation
 //  apply kernel on input and save results on output
 void conv2d(){
+    //  multiplication of kernel and input image
+    //  kernel dimension: (OC) * (KH * KW * C)
+    //  A dimension: (KH * KW * C) * (N * H * W)
+    //  output dimension: OC * N * H * W
 
+    int Y = KH * KW * C;
+    int Z = N * H * W;
+    int X = OC;
+
+    output_col = (float *) malloc(x * Y * sizeof(float));
+    for (int i = 0; i < X; i++){
+        for (int j = 0; j < Z; j++){
+            double sum = 0.0;
+            for (int k = 0; k < Y; k++) {
+                sum += kernel[i*Y + k] * input_col[k * Z + j];
+            }
+            output_col[i * Z + j] = sum;
+        }
+    }
+
+    free(input_col);
+    free(kernel);
+
+    int pad = (KH - 1)/2;
+    output = (float *) malloc(x * Y * sizeof(float));
+    col2im_cpu(output_col, OC, H, W, KH, 1, pad, output);
+
+    free(output_col);
 }
 
 
-int main(){
+int main(int argc, char *argv[]){
     //  read data from binary files
-
+    read_data(argv[0], argv[1]);
     //  preprocessing (this part can be handled in reading part)
 
     //  convolution operation
     //  kernel will be applied to input and result will be stored in output
-
+    conv2d();
 
     //  write results to binary file
+    write_data(argv[2]);
 
-    //  free memory
-    free(input);
-    free(kernel);
-    free(output);
     return 0;
 }
