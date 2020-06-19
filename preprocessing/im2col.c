@@ -8,7 +8,9 @@ float im2col_get_pixel(float *im, int height, int width, int channels,
 
     if (row < 0 || col < 0 ||
         row >= height || col >= width) return 0;
-    return im[col + width*(row + height*channel)];
+    //  im[0][h][w][c] = im[c + C*(w + W*h)]
+    // return im[col + width*(row + height*channel)];
+    return im[channel + channels*(col + width*row)];
 }
 
 void im2col_cpu(float* data_im,

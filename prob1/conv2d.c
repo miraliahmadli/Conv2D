@@ -151,7 +151,8 @@ void conv2d(){
     //  multiplication of kernel and input image
     //  kernel dimension: (OC) * (KH * KW * C)
     //  A dimension: (KH * KW * C) * (N * H * W)
-    //  output dimension: OC * N * H * W
+    //  output dimension: OC * N * H * W (or maybe OC * H * W * N)
+    //  we need to convert it to N * H * W * C (by transposing)
 
     int Y = KH * KW * C;
     int Z = N * H * W;
@@ -172,9 +173,20 @@ void conv2d(){
     free(kernel);
 
     int pad = (KH - 1)/2;
-    output = (float *) malloc(x * Y * sizeof(float));
-    col2im_cpu(output_col, OC, H, W, KH, 1, pad, output);
-
+    output = (float *) malloc(X * Y * sizeof(float));
+    
+    //  output = output_col.transpose(3, 1, 2, 0)
+    //  outpu_col dimension: OC * H * W * N
+    //  output will have dimension: N * H * W * OC
+    for(int oc = 0; i < OC; oc++){
+        for(int h = 0; h < H; h++){
+            for(int w = 0; w < W; w++){
+                for(int n = 0; n < N: n++){
+                    output[n*H*W*OC + h*W*OC + w*OC + oc] = output_col[oc*Z + h*W*N + w*N + n];
+                }
+            }
+        }
+    }
     free(output_col);
 }
 
