@@ -20,6 +20,7 @@ Assume the stride is always 1. Use solely the primitive scalar operations (i.e.,
 #include <stdio.h>
 #include <stdlib.h>
 #include "assert.h"
+#include <time.h>
 
 #include "../preprocessing/im2col.h"
 #include "../preprocessing/col2im.h"
@@ -78,14 +79,16 @@ void read_data(const char *input_file, const char *kernel_file){
     printf("KH = %d KW = %d OC = %d IC = %d\n", KH, KW, OC, IC);
 
     //  allocate arrays
-    input = (float *)malloc(N*H*W*C*4);
+    float *input_pre = (float *)malloc(N*H*W*C*4);
+    // input = (float *)malloc(N*H*W*C*4);
     //  A is (KH*KW*C) * (N*H*W) matrix
     input_col = (float *)malloc((KH*KW*C) * (N*H*W) * 4);
     int pad = (KH - 1)/2;
 
     //  read input image
     printf("Reading input image\n");
-    input_read += fread(input, 4, N*H*W*C, in);
+    // input_read += fread(input, 4, N*H*W*C, in);
+    input_read += fread(input_pre, 4, N*H*W*C, in);
     if (input_read != N*H*W*C + 4){
         printf("Could not write dimensions, written elems = %ld\n", input_read);
         fclose(in);
@@ -95,6 +98,19 @@ void read_data(const char *input_file, const char *kernel_file){
         exit(3);
     }
 
+
+    input = (float *)malloc(N*H*W*C*4);
+    for(int n = 0; n < N; n++){
+        for(int h = 0; h < H; h++){
+            for(int w = 0; w < W; w++){
+                for(int c = 0; c < C; c++){
+                    input[n*H*W*C + c*H*W + h*W + w] = input_pre[n*H*W*C + h*W*C + w*C + c];
+                }
+            }
+        }
+    }
+    free(input_pre);
+
     // apply im2col algorithm
     printf("Applying im2col\n");
     im2col_cpu(input, C, H, W, KH, 1, pad, input_col);
@@ -102,16 +118,28 @@ void read_data(const char *input_file, const char *kernel_file){
 
     // read filters
     printf("Reading kernel\n");
-    kernel = (float *)malloc(KH*KW*OC*IC*4);
-    kernel_read += fread(kernel, 4, KH*KW*OC*IC, kern);
+    // kernel = (float *)malloc(KH*KW*OC*IC*4);
+    float *kernel_pre = (float *)malloc(KH*KW*OC*IC*4);
+    kernel_read += fread(kernel_pre, 4, KH*KW*OC*IC, kern);
     if (kernel_read != KH*KW*OC*IC + 4){
         printf("Could not write dimensions, written elems = %ld\n", kernel_read);
         fclose(in);
         fclose(kern);
         free(input);
-        free(kernel);
+        free(kernel_pre);
         exit(3);
     }
+    kernel = (float *)malloc(KH*KW*OC*IC*4);
+    for(int kh = 0; kh < KH; kh++){
+        for(int kw = 0; kw < KW; kw++){
+            for(int oc = 0; oc < OC; oc++){
+                for(int ic = 0; ic < IC; ic++){
+                    kernel[oc*KH*KW*C + ic*KH*KW + kh*KW + kw] = kernel_pre[kh*KW*OC*IC + kw*OC*IC + ic*OC + oc];
+                }
+            }
+        }
+    }
+    free(kernel_pre);
 
     printf("Reading SUCCESS\n");
     //  close files
@@ -119,14 +147,17 @@ void read_data(const char *input_file, const char *kernel_file){
     fclose(kern);
 }
 
+
 //  writes the results from output to binary file
 void write_data(const char *output_file){
+    printf("Opening file o write: %s\n", output_file);
     FILE *out;
     out = fopen(output_file, "wb");
     if (out == NULL){
         printf("Could not open the output bin file\n");
         exit(-1);
     }
+    printf("Opening SUCCESS\n");
 
     //  for debugging
     size_t elems_written = 0;
@@ -141,14 +172,17 @@ void write_data(const char *output_file){
         fclose(out);
         exit(2);
     }
+    printf("N = %d H = %d W = %d OC = %d\n", N, H, W, OC);
 
     //  write output matrix
+    printf("Writing output\n");
     elems_written += fwrite(output, 4, N*H*W*OC, out);
     if (elems_written != N*H*W*OC + 4){
         printf("Could not write dimensions, written elems = %ld\n", elems_written);
         fclose(out);
         exit(2);
     }
+    printf("Writing SUCCESS\n");
 
     fclose(out);
     free(output);
@@ -156,7 +190,7 @@ void write_data(const char *output_file){
 
 //  convolution operation
 //  apply kernel on input and save results on output
-void conv2d(){
+double conv2d(){
     //  multiplication of kernel and input image
     //  kernel dimension: (OC) * (KH * KW * C)
     //  A dimension: (KH * KW * C) * (N * H * W)
@@ -168,6 +202,10 @@ void conv2d(){
     int X = OC;
 
     output_col = (float *) malloc(X * Y * sizeof(float));
+    clock_t start, end;
+    double cpu_time_used;
+    
+    start = clock();
     for (int i = 0; i < X; i++){
         for (int j = 0; j < Z; j++){
             float sum = 0.0f;
@@ -177,6 +215,7 @@ void conv2d(){
             output_col[i * Z + j] = sum;
         }
     }
+    end = clock();
 
     free(input_col);
     free(kernel);
@@ -197,6 +236,9 @@ void conv2d(){
         }
     }
     free(output_col);
+
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    return cpu_time_used;
 }
 
 
@@ -208,10 +250,11 @@ int main(int argc, char *argv[]){
 
     //  convolution operation
     //  kernel will be applied to input and result will be stored in output
-    conv2d();
-
+    double elapsed_time = conv2d();
+    // printf("Time took for convolution operation is: %f\n", elapsed_time);
+    printf("Convolution operation took %f seconds to execute\n", elapsed_time); 
     //  write results to binary file
-    write_data(argv[3]);
+    write_data("output.bin");
 
     return 0;
 }

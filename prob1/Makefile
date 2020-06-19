@@ -5,10 +5,10 @@ result1:
 	./convolution /home/mirali/Conv2D/group2/1/input_tensor.bin /home/mirali/Conv2D/group2/1/kernel_tensor.bin
 
 result2:
-	./convolution ./group2/2/input_tensor.bin ./group2/2/kernel_tensor.bin
+	./convolution /home/mirali/Conv2D/group2/2/input_tensor.bin /home/mirali/Conv2D/group2/2/kernel_tensor.bin
 
 result3:
-	./convolution ./group2/3/input_tensor.bin ./group2/3/kernel_tensor.bin
+	./convolution /home/mirali/Conv2D/group2/3/input_tensor.bin /home/mirali/Conv2D/group2/3/kernel_tensor.bin
 
 clean:
 	rm -f convolution
