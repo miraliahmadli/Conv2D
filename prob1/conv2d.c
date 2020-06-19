@@ -161,7 +161,7 @@ void conv2d(){
     output_col = (float *) malloc(x * Y * sizeof(float));
     for (int i = 0; i < X; i++){
         for (int j = 0; j < Z; j++){
-            double sum = 0.0;
+            float sum = 0.0f;
             for (int k = 0; k < Y; k++) {
                 sum += kernel[i*Y + k] * input_col[k * Z + j];
             }
