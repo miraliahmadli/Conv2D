@@ -33,11 +33,9 @@ int KH, KW, OC, IC;
 
 //  reads binary data from given files to input and kernel arrays
 void read_data(const char *input_file, const char *kernel_file){
-    printf("Opening files: %s %s\n", input_file, kernel_file);
     FILE *in, *kern;
     in = fopen(input_file, "rb");
     kern = fopen(kernel_file, "rb");
-    printf("Opening SUCCESS\n");
 
     if (in == NULL || kern == NULL){
         printf("Could not open the input bin files %s %s\n", input_file, kernel_file);
@@ -52,7 +50,6 @@ void read_data(const char *input_file, const char *kernel_file){
     size_t kernel_read = 0;
 
     //  read dimensions
-    printf("Reading input dimensions\n");
     input_read += fread(&N, 4, 1, in);
     input_read += fread(&H, 4, 1, in);
     input_read += fread(&W, 4, 1, in);
@@ -63,9 +60,8 @@ void read_data(const char *input_file, const char *kernel_file){
         fclose(kern);
         exit(3);
     }
-    printf("N = %d H = %d W = %d C = %d\n", N, H, W, C);
+    // printf("N = %d H = %d W = %d C = %d\n", N, H, W, C);
 
-    printf("Reading kernel dimensions\n");
     kernel_read += fread(&KH, 4, 1, kern);
     kernel_read += fread(&KW, 4, 1, kern);
     kernel_read += fread(&OC, 4, 1, kern);
@@ -76,7 +72,7 @@ void read_data(const char *input_file, const char *kernel_file){
         fclose(kern);
         exit(3);
     }
-    printf("KH = %d KW = %d OC = %d IC = %d\n", KH, KW, OC, IC);
+    // printf("KH = %d KW = %d OC = %d IC = %d\n", KH, KW, OC, IC);
 
     //  allocate arrays
     float *input_pre = (float *)malloc(N*H*W*C*4);
@@ -86,7 +82,6 @@ void read_data(const char *input_file, const char *kernel_file){
     int pad = (KH - 1)/2;
 
     //  read input image
-    printf("Reading input image\n");
     // input_read += fread(input, 4, N*H*W*C, in);
     input_read += fread(input_pre, 4, N*H*W*C, in);
     if (input_read != N*H*W*C + 4){
@@ -98,7 +93,7 @@ void read_data(const char *input_file, const char *kernel_file){
         exit(3);
     }
 
-
+    //  input = input_pre.transpose(n, c, h, w)
     input = (float *)malloc(N*H*W*C*4);
     for(int n = 0; n < N; n++){
         for(int h = 0; h < H; h++){
@@ -112,12 +107,10 @@ void read_data(const char *input_file, const char *kernel_file){
     free(input_pre);
 
     // apply im2col algorithm
-    printf("Applying im2col\n");
     im2col_cpu(input, C, H, W, KH, 1, pad, input_col);
     free(input);
 
     // read filters
-    printf("Reading kernel\n");
     // kernel = (float *)malloc(KH*KW*OC*IC*4);
     float *kernel_pre = (float *)malloc(KH*KW*OC*IC*4);
     kernel_read += fread(kernel_pre, 4, KH*KW*OC*IC, kern);
@@ -129,6 +122,8 @@ void read_data(const char *input_file, const char *kernel_file){
         free(kernel_pre);
         exit(3);
     }
+
+    //  kernel = kernel.transpose(3, 0, 1, 2)
     kernel = (float *)malloc(KH*KW*OC*IC*4);
     for(int kh = 0; kh < KH; kh++){
         for(int kw = 0; kw < KW; kw++){
@@ -141,7 +136,6 @@ void read_data(const char *input_file, const char *kernel_file){
     }
     free(kernel_pre);
 
-    printf("Reading SUCCESS\n");
     //  close files
     fclose(in);
     fclose(kern);
@@ -150,14 +144,12 @@ void read_data(const char *input_file, const char *kernel_file){
 
 //  writes the results from output to binary file
 void write_data(const char *output_file){
-    printf("Opening file o write: %s\n", output_file);
     FILE *out;
     out = fopen(output_file, "wb");
     if (out == NULL){
         printf("Could not open the output bin file\n");
         exit(-1);
     }
-    printf("Opening SUCCESS\n");
 
     //  for debugging
     size_t elems_written = 0;
@@ -172,17 +164,15 @@ void write_data(const char *output_file){
         fclose(out);
         exit(2);
     }
-    printf("N = %d H = %d W = %d OC = %d\n", N, H, W, OC);
+    // printf("N = %d H = %d W = %d OC = %d\n", N, H, W, OC);
 
     //  write output matrix
-    printf("Writing output\n");
     elems_written += fwrite(output, 4, N*H*W*OC, out);
     if (elems_written != N*H*W*OC + 4){
         printf("Could not write dimensions, written elems = %ld\n", elems_written);
         fclose(out);
         exit(2);
     }
-    printf("Writing SUCCESS\n");
 
     fclose(out);
     free(output);
@@ -243,7 +233,6 @@ double conv2d(){
 
 
 int main(int argc, char *argv[]){
-    printf("Reading STARTS\n");
     //  read data from binary files
     read_data(argv[1], argv[2]);
     //  preprocessing (this part can be handled in reading part)
