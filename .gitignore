@@ -3,7 +3,7 @@ prob2/convolution
 prob3/convolution
 prob4/convolution
 
-prob1/output.bin
-prob2/output.bin
-prob3/output.bin
-prob4/output.bin
+prob1/output_tensor.bin
+prob2/output_tensor.bin
+prob3/output_tensor.bin
+prob4/output_tensor.bin

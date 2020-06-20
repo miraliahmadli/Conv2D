@@ -243,7 +243,7 @@ int main(int argc, char *argv[]){
     // printf("Time took for convolution operation is: %f\n", elapsed_time);
     printf("Convolution operation took %f seconds to execute\n", elapsed_time); 
     //  write results to binary file
-    write_data("output.bin");
+    write_data("output_tensor.bin");
 
     return 0;
 }
