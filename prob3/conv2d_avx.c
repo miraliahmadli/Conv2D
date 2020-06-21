@@ -331,7 +331,7 @@ double conv2d(int P){
         float scale1 = ((float)(max_int - min_int)) / (max_in - min_in);
         printf("SCALE1 = %f\n", scale1);
         float scale2 = ((float)(max_int - min_int));
-        printf("SCALE2 = %f", scale2);
+        printf("SCALE2 = %f\n", scale2);
         
         int16_t *q_input = (int16_t *)malloc(Y*Z*sizeof(int16_t));
         int16_t *q_kernel = (int16_t *)malloc(Y*X*sizeof(int16_t));
@@ -343,7 +343,6 @@ double conv2d(int P){
         for(int i = 0; i < Y*X; i++) q_kernel[i] = (int16_t) round(min(max_int, max(min_int, kernel[i] * scale2)));
         ovr_end = clock();
         time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
-
 
         q_start = clock();
         for (int i = 0; i < X; i++){
@@ -363,7 +362,7 @@ double conv2d(int P){
                         +  (int16_t) _mm256_extract_epi16(res_8, 12) + (int16_t) _mm256_extract_epi16(res_8, 13)
                         +  (int16_t) _mm256_extract_epi16(res_8, 14) + (int16_t) _mm256_extract_epi16(res_8, 15);
                 }
-                q_output[i * MN + j] = sum;
+                q_output[i * Z + j] = sum;
             }
         }
         q_end = clock();
@@ -371,7 +370,7 @@ double conv2d(int P){
         printf("Quantized Convolution operation took %f seconds to execute\n", q_cpu_time_used);
 
         ovr_start = clock();
-        for(int i = 0; i < Z*X; i++) r_output[i] = (float) (q_output[i] / (scale1 * scale2));//pow(scale, 2));
+        for(int i = 0; i < Z*X; i++) r_output[i] = (float) (q_output[i] / (scale1 * scale2));
         ovr_end = clock();
         time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
         printf("Overhead time is: %f\n", time_overhead);
@@ -429,7 +428,7 @@ double conv2d(int P){
                         +  (int32_t) _mm256_extract_epi32(res_8, 4) + (int32_t) _mm256_extract_epi32(res_8, 5)
                         +  (int32_t) _mm256_extract_epi32(res_8, 6) + (int32_t) _mm256_extract_epi32(res_8, 7);
                 }
-                q_output[i * MN + j] = sum;
+                q_output[i * Z + j] = sum;
             }
         }
         q_end = clock();
