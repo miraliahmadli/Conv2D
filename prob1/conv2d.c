@@ -23,7 +23,7 @@ Assume the stride is always 1. Use solely the primitive scalar operations (i.e.,
 #include <time.h>
 
 #include "../preprocessing/im2col.h"
-#include "../preprocessing/col2im.h"
+// #include "../preprocessing/col2im.h"
 
 float *input, *kernel, *output;
 float *input_col, *output_col;
