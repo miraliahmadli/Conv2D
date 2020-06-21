@@ -50,14 +50,14 @@ void *mult(void* arg)
     int i = 0, j =0;
 
     int row = *data;
-    int col = *(data + 1);
+    // int col = *(data + 1);
     float p[BLOCK];
     __m256 col_8, row_8, res_8;
     for (j = 0; j < BLOCK; j++){
         sum = 0.0;
         for (i = 0; i < MK; i = i + 8){
             col_8 = _mm256_loadu_ps(&kernel[row * MK + i]);
-            row_8 = _mm256_loadu_ps(&input_col[(col + j) * MK + i]);
+            row_8 = _mm256_loadu_ps(&input_col[j * MK + i]);
             res_8 = _mm256_mul_ps(col_8, row_8);
             for (int i = 0; i < 8; i++) sum += *(float *)&res_8[i];
         }
@@ -73,8 +73,10 @@ void matmul(float *out, int X, int Y, int Z){
     BLOCK = MN;
 
     NUM_THR = size / BLOCK;
+    printf("BLOCK is %d\n", BLOCK);
+    printf("NUMTHR is %d\n", NUM_THR);
 
-    int i, j;
+    int i, j, t;
   
     printf("We are here\n");
     pthread_t *threads;
@@ -82,17 +84,15 @@ void matmul(float *out, int X, int Y, int Z){
     printf("%d %d %d\n", MM, MN, MK);
     int counter = 0;
     for (i = 0; i < MM; i++){
-        for (j = 0; j < MN; j = j + BLOCK){
             int *data;
-            data = calloc(2,sizeof(int));
+            data = calloc(1,sizeof(int));
             *data = i;
-            *(data + 1) = j;
+            // *(data + 1) = j;
             if(pthread_create(&threads[counter++], NULL, mult, (void*)data) != 0){
-                printf("Create failed at %d %d\n", i, j);
+                printf("Create failed at %d\n", i);
                 exit(-1);
                 return;
             }
-        }
     }
     printf("We are here\n");
     float *res;
@@ -118,10 +118,6 @@ void matmul2(float *out, int X, int Y, int Z){
     int i, j, k, row, col;
     float sum;
   
-    printf("We are here\n");
-    // pthread_t *threads;
-    // threads = (pthread_t*)malloc(NUM_THR*sizeof(pthread_t));
-    printf("%d %d %d\n", MM, MN, MK);
     int counter = 0;
     for (row = 0; row < MM; row++){
         for (col = 0; col < MN; col++){
@@ -132,8 +128,8 @@ void matmul2(float *out, int X, int Y, int Z){
                 row_8 = _mm256_loadu_ps(&input_col[col * MK + i]);
                 res_8 = _mm256_mul_ps(col_8, row_8);
                 for (int i = 0; i < 8; i++) sum += *(float *)&res_8[i];
-                out[row * MN + col] = sum;
             }
+            out[row * MN + col] = sum;
         }
     }
 }
@@ -338,23 +334,125 @@ double conv2d(int P){
     double cpu_time_used;
     
     //  Convolution operation
-    printf("CONV starts\n");
     start = clock();
     matmul2(output_col, X, Y, Z);
     end = clock();
-    printf("CONV done\n");
-    printf("%d %d %d\n", X, Y, Z);
+
+    if(P == 16){
+        float min_in = -25.0f;
+        float max_in = 25.0f;
+
+        int16_t max_int = (1 << 15) - 1;
+        int16_t min_int = 1 << 15;
+
+        float scale1 = ((float)(max_int - min_int)) / (max_in - min_in);
+        printf("SCALE = %f\n", scale1);
+        float scale2 = ((float)(max_int - min_int));
+        
+        int16_t *q_input = (int16_t *)malloc(Y*Z*sizeof(int16_t));
+        int16_t *q_kernel = (int16_t *)malloc(Y*X*sizeof(int16_t));
+        int16_t *q_output = (int16_t *)malloc(Z*X*sizeof(int16_t));
+        float *r_output = (float *)malloc(Z*X*sizeof(float));
+
+        for(int i = 0; i < Y*Z; i++) q_input[i] = (int16_t) (input_col[i] * scale1);
+        for(int i = 0; i < Y*X; i++) q_kernel[i] = (int16_t) (kernel[i] * scale2);
+
+        for (int i = 0; i < X; i++){
+            for (int j = 0; j < Z; j++){
+                int16_t sum = 0;
+                __m256i col_8, row_8, res_8;
+                for (int k = 0; k < Y; k = k + 8){
+                    col_8 = _mm256_loadu_si256((__m256i *)&q_kernel[i * MK + k]);
+                    row_8 = _mm256_loadu_si256((__m256i *)&q_input[j * MK + k]);
+                    res_8 = _mm256_mullo_epi16(col_8, row_8);
+                    sum += (int16_t) _mm256_extract_epi16(res_8, 0) + (int16_t) _mm256_extract_epi16(res_8, 1)
+                        +  (int16_t) _mm256_extract_epi16(res_8, 2) + (int16_t) _mm256_extract_epi16(res_8, 3)
+                        +  (int16_t) _mm256_extract_epi16(res_8, 4) + (int16_t) _mm256_extract_epi16(res_8, 5)
+                        +  (int16_t) _mm256_extract_epi16(res_8, 6) + (int16_t) _mm256_extract_epi16(res_8, 7)
+                        +  (int16_t) _mm256_extract_epi16(res_8, 8) + (int16_t) _mm256_extract_epi16(res_8, 9)
+                        +  (int16_t) _mm256_extract_epi16(res_8, 10) + (int16_t) _mm256_extract_epi16(res_8, 11)
+                        +  (int16_t) _mm256_extract_epi16(res_8, 12) + (int16_t) _mm256_extract_epi16(res_8, 13)
+                        +  (int16_t) _mm256_extract_epi16(res_8, 14) + (int16_t) _mm256_extract_epi16(res_8, 15);
+                }
+                q_output[i * MN + j] = sum;
+            }
+        }
+
+        for(int i = 0; i < Z*X; i++) r_output[i] = (float) (q_output[i] / (scale1 * scale2));//pow(scale, 2));
+
+        float diff = y_max - y_min;
+        float result = 0.0f;
+        for(int i = 0; i < Z*X; i++){
+            result +=  pow(output_col[i] - r_output[i], 2);
+        }
+
+        result = sqrt(result / Z*X) / diff;
+        printf("NRMSE = %f\n", result);
+        free(q_input);
+        free(q_output);
+        free(q_kernel);
+        free(r_output);
+    }
+
+    if(P == 32){
+        float min_in = -25.0f;
+        float max_in = 25.0f;
+
+        long max_int = 0x7FFFFFFF;//(1 << 31) - 1;
+        long min_int = 0x80000000;//1 << 31;
+
+        float scale1 = ((float) max_int) / (max_in - min_in);
+        printf("SCALE = %f\n", scale1);
+        float scale2 = ((double)(max_int - min_int));
+
+        int32_t *q_input = (int32_t *)malloc(Y*Z*sizeof(int32_t));
+        int32_t *q_kernel = (int32_t *)malloc(Y*X*sizeof(int32_t));
+        int32_t *q_output = (int32_t *)malloc(Z*X*sizeof(int32_t));
+        float *r_output = (float *)malloc(Z*X*sizeof(float));
+
+        for(int i = 0; i < Y*Z; i++) q_input[i] = (int32_t) (input_col[i] * scale1);
+        for(int i = 0; i < Y*X; i++) q_kernel[i] = (int32_t) (kernel[i] * scale2);
+
+        for (int i = 0; i < X; i++){
+            for (int j = 0; j < Z; j++){
+                int32_t sum = 0;
+                __m256i col_8, row_8, res_8;
+                for (int k = 0; k < Y; k = k + 8){
+                    col_8 = _mm256_loadu_si256((__m256i *)&q_kernel[i * MK + k]);
+                    row_8 = _mm256_loadu_si256((__m256i *)&q_input[j * MK + k]);
+                    res_8 = _mm256_mullo_epi32(col_8, row_8);
+                    sum += (int32_t) _mm256_extract_epi32(res_8, 0) + (int32_t) _mm256_extract_epi32(res_8, 1)
+                        +  (int32_t) _mm256_extract_epi32(res_8, 2) + (int32_t) _mm256_extract_epi32(res_8, 3)
+                        +  (int32_t) _mm256_extract_epi32(res_8, 4) + (int32_t) _mm256_extract_epi32(res_8, 5)
+                        +  (int32_t) _mm256_extract_epi32(res_8, 6) + (int32_t) _mm256_extract_epi32(res_8, 7);
+                }
+                q_output[i * MN + j] = sum;
+            }
+        }
+
+        for(int i = 0; i < Z*X; i++) r_output[i] = (float) (q_output[i] / (scale1 * scale2));//pow(scale, 2));
+
+        float diff = y_max - y_min;
+        float result = 0.0f;
+        for(int i = 0; i < Z*X; i++){
+            result +=  pow(output_col[i] - r_output[i], 2);
+        }
+
+        result = sqrt(result / Z*X) / diff;
+        printf("NRMSE = %f\n", result);
+        free(q_input);
+        free(q_output);
+        free(q_kernel);
+        free(r_output);
+    }
+
 
     free(input_col);
     free(kernel);
 
     int pad = (KH - 1)/2;
-    printf("WOW\n");
     output = (float *) malloc(X * Y * sizeof(float));
-    printf("NICE\n");
-    //  output = output_col.transpose(3, 1, 2, 0)
-    //  outpu_col dimension: OC * H * W * N
-    //  output will have dimension: N * H * W * OC
+
     for(int oc = 0; oc < OC; oc++){
         for(int h = 0; h < H; h++){
             for(int w = 0; w < W; w++){
@@ -365,7 +463,6 @@ double conv2d(int P){
         }
     }
     free(output_col);
-    printf("NICE2\n");
     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
     return cpu_time_used;
 }
@@ -384,10 +481,8 @@ int main(int argc, char *argv[]){
     }
 
     read_data(argv[1], argv[2]);
-    printf("READ data\n");
 
     double elapsed_time = conv2d(P);
-    printf("CONV\n");
 
     printf("Convolution operation took %f seconds to execute\n", elapsed_time); 
 
