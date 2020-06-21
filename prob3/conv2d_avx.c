@@ -352,15 +352,23 @@ double conv2d(int P){
                 for (int k = 0; k < Y; k = k + 16){
                     col_8 = _mm256_loadu_si256((__m256i *)&q_kernel[i * MK + k]);
                     row_8 = _mm256_loadu_si256((__m256i *)&q_input[j * MK + k]);
-                    res_8 = _mm256_mullo_epi16(col_8, row_8);
-                    sum += (int16_t) _mm256_extract_epi16(res_8, 0) + (int16_t) _mm256_extract_epi16(res_8, 1)
-                        +  (int16_t) _mm256_extract_epi16(res_8, 2) + (int16_t) _mm256_extract_epi16(res_8, 3)
-                        +  (int16_t) _mm256_extract_epi16(res_8, 4) + (int16_t) _mm256_extract_epi16(res_8, 5)
-                        +  (int16_t) _mm256_extract_epi16(res_8, 6) + (int16_t) _mm256_extract_epi16(res_8, 7)
-                        +  (int16_t) _mm256_extract_epi16(res_8, 8) + (int16_t) _mm256_extract_epi16(res_8, 9)
-                        +  (int16_t) _mm256_extract_epi16(res_8, 10) + (int16_t) _mm256_extract_epi16(res_8, 11)
-                        +  (int16_t) _mm256_extract_epi16(res_8, 12) + (int16_t) _mm256_extract_epi16(res_8, 13)
-                        +  (int16_t) _mm256_extract_epi16(res_8, 14) + (int16_t) _mm256_extract_epi16(res_8, 15);
+                    // res_8 = _mm256_mullo_epi16(col_8, row_8);
+                    sum +=((int16_t) _mm256_extract_epi16(col_8, 0) * (int16_t) _mm256_extract_epi16(row_8, 0))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 1) * (int16_t) _mm256_extract_epi16(row_8, 1))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 2) * (int16_t) _mm256_extract_epi16(row_8, 2))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 3) * (int16_t) _mm256_extract_epi16(row_8, 3))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 4) * (int16_t) _mm256_extract_epi16(row_8, 4))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 5) * (int16_t) _mm256_extract_epi16(row_8, 5))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 6) * (int16_t) _mm256_extract_epi16(row_8, 6))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 7) * (int16_t) _mm256_extract_epi16(row_8, 7))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 8) * (int16_t) _mm256_extract_epi16(row_8, 8))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 9) * (int16_t) _mm256_extract_epi16(row_8, 9))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 10) * (int16_t) _mm256_extract_epi16(row_8, 10))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 11) * (int16_t) _mm256_extract_epi16(row_8, 11))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 12) * (int16_t) _mm256_extract_epi16(row_8, 12))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 13) * (int16_t) _mm256_extract_epi16(row_8, 13))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 14) * (int16_t) _mm256_extract_epi16(row_8, 14))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 15) * (int16_t) _mm256_extract_epi16(row_8, 15));
                 }
                 q_output[i * Z + j] = sum;
             }
@@ -422,11 +430,15 @@ double conv2d(int P){
                 for (int k = 0; k < Y; k = k + 8){
                     col_8 = _mm256_loadu_si256((__m256i *)&q_kernel[i * MK + k]);
                     row_8 = _mm256_loadu_si256((__m256i *)&q_input[j * MK + k]);
-                    res_8 = _mm256_mullo_epi32(col_8, row_8);
-                    sum += (int32_t) _mm256_extract_epi32(res_8, 0) + (int32_t) _mm256_extract_epi32(res_8, 1)
-                        +  (int32_t) _mm256_extract_epi32(res_8, 2) + (int32_t) _mm256_extract_epi32(res_8, 3)
-                        +  (int32_t) _mm256_extract_epi32(res_8, 4) + (int32_t) _mm256_extract_epi32(res_8, 5)
-                        +  (int32_t) _mm256_extract_epi32(res_8, 6) + (int32_t) _mm256_extract_epi32(res_8, 7);
+                    // res_8 = _mm256_mullo_epi32(col_8, row_8);
+                    sum +=((int32_t) _mm256_extract_epi16(col_8, 0) * (int32_t) _mm256_extract_epi16(row_8, 0))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 1) * (int32_t) _mm256_extract_epi16(row_8, 1))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 2) * (int32_t) _mm256_extract_epi16(row_8, 2))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 3) * (int32_t) _mm256_extract_epi16(row_8, 3))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 4) * (int32_t) _mm256_extract_epi16(row_8, 4))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 5) * (int32_t) _mm256_extract_epi16(row_8, 5))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 6) * (int32_t) _mm256_extract_epi16(row_8, 6))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 7) * (int32_t) _mm256_extract_epi16(row_8, 7));
                 }
                 q_output[i * Z + j] = sum;
             }

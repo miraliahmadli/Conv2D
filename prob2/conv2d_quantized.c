@@ -398,7 +398,7 @@ double conv2d(int P){
             for (int j = 0; j < Z; j++){
                 int64_t sum = 0;
                 for (int k = 0; k < Y; k++) {
-                    sum += q_kernel[i*Y + k] * q_input[k * Z + j];
+                    sum += (long)q_kernel[i*Y + k] * (long)q_input[k * Z + j];
                 }
                 q_output[i * Z + j] = sum;
             }
