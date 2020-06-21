@@ -27,6 +27,11 @@ Assume the stride is always 1. Use solely the primitive scalar operations (i.e.,
 
 #include "../preprocessing/im2col.h"
 
+
+#define min(X,Y) ((X) < (Y) ? (X) : (Y))
+#define max(X,Y) ((X) > (Y) ? (X) : (Y))
+
+
 float *input, *kernel, *output, *output_q;
 float *input_col;
 int N, H, W, C;
@@ -225,8 +230,9 @@ double conv2d(int P){
     int X = OC;
 
     float *output_col = (float *) malloc(X * Y * sizeof(float));
-    clock_t start, end, ovr_start, ovr_end;
-    double cpu_time_used;
+    clock_t start, end, ovr_start, ovr_end, q_start, q_end;
+    double cpu_time_used, time_overhead, q_cpu_time_used;
+    time_overhead = 0.0;
     float y_max = FLT_MIN;
     float y_min = FLT_MAX;
     
@@ -248,24 +254,29 @@ double conv2d(int P){
     //  Quantization starts
     //  start from 0 because of padding
     if(P == 8){
-        float min_in = -25.0f;
-        float max_in = 25.0f;
+        float min_in = -30.0f;
+        float max_in = 30.0f;
 
         int8_t max_int = 127;
         int8_t min_int = -128;
 
-        float scale1 = ((float)(max_int - min_int)) / (max_in - min_in);
+        float scale1 = round(min((float)max_int / max_in, (float)min_int / min_in));
         printf("SCALE = %f\n", scale1);
-        float scale2 = max_int - min_int;
+        // float scale2 = max_int - min_int;
+        float scale2 = 64;
         
         int8_t *q_input = (int8_t *)malloc(Y*Z*sizeof(int8_t));
         int8_t *q_kernel = (int8_t *)malloc(Y*X*sizeof(int8_t));
         int8_t *q_output = (int8_t *)malloc(Z*X*sizeof(int8_t));
         float *r_output = (float *)malloc(Z*X*sizeof(float));
+        ovr_start = clock();
+        for(int i = 0; i < Y*Z; i++) q_input[i] = (int8_t) round(min(max_int, max(min_int, input_col[i] * scale1)));
+        for(int i = 0; i < Y*X; i++) q_kernel[i] = (int8_t) round(min(max_int, max(min_int, kernel[i] * scale2)));
+        ovr_end = clock();
+        time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
 
-        for(int i = 0; i < Y*Z; i++) q_input[i] = (int8_t) (input_col[i] * scale1);
-        for(int i = 0; i < Y*X; i++) q_kernel[i] = (int8_t) (kernel[i] * scale2);
 
+        q_start = clock();
         for (int i = 0; i < X; i++){
             for (int j = 0; j < Z; j++){
                 int8_t sum = 0;
@@ -275,9 +286,16 @@ double conv2d(int P){
                 q_output[i * Z + j] = sum;
             }
         }
+        q_end = clock();
+        q_cpu_time_used += ((double) (q_end - q_start)) / CLOCKS_PER_SEC;
+        printf("Quantized Convolution operation took %f seconds to execute\n", q_cpu_time_used);
 
+        ovr_start = clock();
         for(int i = 0; i < Z*X; i++) r_output[i] = (float) (q_output[i] / (scale1 * scale2));//pow(scale, 2));
-
+        ovr_end = clock();
+        time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
+        printf("Overhead time is: %f\n", time_overhead);
+        
         float diff = y_max - y_min;
         float result = 0.0f;
         for(int i = 0; i < Z*X; i++){
@@ -308,9 +326,13 @@ double conv2d(int P){
         int16_t *q_output = (int16_t *)malloc(Z*X*sizeof(int16_t));
         float *r_output = (float *)malloc(Z*X*sizeof(float));
 
+        q_start = clock();
         for(int i = 0; i < Y*Z; i++) q_input[i] = (int16_t) (input_col[i] * scale1);
         for(int i = 0; i < Y*X; i++) q_kernel[i] = (int16_t) (kernel[i] * scale2);
+        ovr_end = clock();
+        time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
 
+        q_start = clock();
         for (int i = 0; i < X; i++){
             for (int j = 0; j < Z; j++){
                 int16_t sum = 0;
@@ -320,8 +342,15 @@ double conv2d(int P){
                 q_output[i * Z + j] = sum;
             }
         }
+        q_end = clock();
+        q_cpu_time_used += ((double) (q_end - q_start)) / CLOCKS_PER_SEC;
+        printf("Quantized Convolution operation took %f seconds to execute\n", q_cpu_time_used);
 
+        q_start = clock();
         for(int i = 0; i < Z*X; i++) r_output[i] = (float) (q_output[i] / (scale1 * scale2));//pow(scale, 2));
+        ovr_end = clock();
+        time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
+        printf("Overhead time is: %f\n", time_overhead);
 
         float diff = y_max - y_min;
         float result = 0.0f;
@@ -353,9 +382,13 @@ double conv2d(int P){
         int32_t *q_output = (int32_t *)malloc(Z*X*sizeof(int32_t));
         float *r_output = (float *)malloc(Z*X*sizeof(float));
 
+        q_start = clock();
         for(int i = 0; i < Y*Z; i++) q_input[i] = (int32_t) (input_col[i] * scale1);
         for(int i = 0; i < Y*X; i++) q_kernel[i] = (int32_t) (kernel[i] * scale2);
+        ovr_end = clock();
+        time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
 
+        q_start = clock();
         for (int i = 0; i < X; i++){
             for (int j = 0; j < Z; j++){
                 int32_t sum = 0;
@@ -365,8 +398,15 @@ double conv2d(int P){
                 q_output[i * Z + j] = sum;
             }
         }
+        q_end = clock();
+        q_cpu_time_used += ((double) (q_end - q_start)) / CLOCKS_PER_SEC;
+        printf("Quantized Convolution operation took %f seconds to execute\n", q_cpu_time_used);
 
+        ovr_start = clock();
         for(int i = 0; i < Z*X; i++) r_output[i] = (float) (q_output[i] / (scale1 * scale2));//pow(scale, 2));
+        ovr_end = clock();
+        time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
+        printf("Overhead time is: %f\n", time_overhead);
 
         float diff = y_max - y_min;
         float result = 0.0f;
