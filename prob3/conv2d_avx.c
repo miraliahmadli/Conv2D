@@ -335,12 +335,12 @@ double conv2d(int P){
         
         int16_t *q_input = (int16_t *)malloc(Y*Z*sizeof(int16_t));
         int16_t *q_kernel = (int16_t *)malloc(Y*X*sizeof(int16_t));
-        int16_t *q_output = (int16_t *)malloc(Z*X*sizeof(int16_t));
+        int32_t *q_output = (int32_t *)malloc(Z*X*sizeof(int32_t));
         float *r_output = (float *)malloc(Z*X*sizeof(float));
 
         ovr_start = clock();
-        for(int i = 0; i < Y*Z; i++) q_input[i] = (int16_t) (input_col[i] * scale1);
-        for(int i = 0; i < Y*X; i++) q_kernel[i] = (int16_t) (kernel[i] * scale2);
+        for(int i = 0; i < Y*Z; i++) q_input[i] = (int16_t) round(min(max_int, max(min_int, input_col[i] * scale1)));
+        for(int i = 0; i < Y*X; i++) q_kernel[i] = (int16_t) round(min(max_int, max(min_int, kernel[i] * scale2)));
         ovr_end = clock();
         time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
 
@@ -348,7 +348,7 @@ double conv2d(int P){
         q_start = clock();
         for (int i = 0; i < X; i++){
             for (int j = 0; j < Z; j++){
-                int16_t sum = 0;
+                int32_t sum = 0;
                 __m256i col_8, row_8, res_8;
                 for (int k = 0; k < Y; k = k + 16){
                     col_8 = _mm256_loadu_si256((__m256i *)&q_kernel[i * MK + k]);
@@ -394,33 +394,23 @@ double conv2d(int P){
         //round(min(max_range, max(min_range, input)) * scale_factor);
         float min_in = -25.0f;
         float max_in = 25.0f;
-        float min_kern = -0.5f;
-        float max_kern = 0.5f;
 
-        int32_t min_T = 1 << (P-1);
-        int32_t max_T = min_T - 1;
+        int32_t max_int = 2147483647;//(1 << 31) - 1;
+        int32_t min_int = -2147483647;//1 << 31;
 
-        const float scale_factor_from_min_side =
-            (min_T * min_in > 0) ? min_T / min_in : FLT_MAX;
-        const float scale_factor_from_max_side =
-            (max_T * max_in > 0) ? max_T / max_in : FLT_MAX;
-
-        float scale1 = min(scale_factor_from_min_side, scale_factor_from_max_side);
-        float scale2 = min(min_T / min_kern, max_T / max_kern);
-
-        // float scale1 = ((float) max_int) / (max_in - min_in);
+        float scale1 = ((long) max_int - (long) min_int) / (max_in - min_in);
         printf("SCALE1 = %f\n", scale1);
+        float scale2 = ((long) max_int - (long) min_int);
         printf("SCALE2 = %f\n", scale2);
-        // float scale2 = ((double)(max_int - min_int));
 
         int32_t *q_input = (int32_t *)malloc(Y*Z*sizeof(int32_t));
         int32_t *q_kernel = (int32_t *)malloc(Y*X*sizeof(int32_t));
-        int32_t *q_output = (int32_t *)malloc(Z*X*sizeof(int32_t));
+        int64_t *q_output = (int64_t *)malloc(Z*X*sizeof(int64_t));
         float *r_output = (float *)malloc(Z*X*sizeof(float));
 
         ovr_start = clock();
-        for(int i = 0; i < Y*Z; i++) q_input[i] = (int32_t) round(min(max_T, max(min_T, input_col[i] * scale1))); 
-        for(int i = 0; i < Y*X; i++) q_kernel[i] = (int32_t) round(min(max_T, max(min_T, input_col[i] * scale2))); 
+        for(int i = 0; i < Y*Z; i++) q_input[i] = (int32_t) round(min(max_int, max(min_int, input_col[i] * scale1)));
+        for(int i = 0; i < Y*X; i++) q_kernel[i] = (int32_t) round(min(max_int, max(min_int, kernel[i] * scale2)));
         ovr_end = clock();
         time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
 
@@ -428,7 +418,7 @@ double conv2d(int P){
         q_start = clock();
         for (int i = 0; i < X; i++){
             for (int j = 0; j < Z; j++){
-                int32_t sum = 0;
+                int64_t sum = 0;
                 __m256i col_8, row_8, res_8;
                 for (int k = 0; k < Y; k = k + 8){
                     col_8 = _mm256_loadu_si256((__m256i *)&q_kernel[i * MK + k]);
