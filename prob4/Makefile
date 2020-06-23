@@ -1,5 +1,5 @@
 convolution: conv2d_cuda.c
-	nvcc -o $@ $^ ../preprocessing/im2col.c matmul.cu
+	nvcc -O3 -o $@ $^ ../preprocessing/im2col.c matmul.cu
 
 result1:
 	./convolution /home/mirali/Conv2D/group2/1/input_tensor.bin /home/mirali/Conv2D/group2/1/kernel_tensor.bin

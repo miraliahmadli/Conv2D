@@ -1,5 +1,5 @@
 convolution: conv2d_quantized.c
-	gcc -o $@ $^ ../preprocessing/im2col.c -lm
+	gcc -O3 -o $@ $^ ../preprocessing/im2col.c -lm
 
 result1_8:
 	./convolution /home/mirali/Conv2D/group2/1/input_tensor.bin /home/mirali/Conv2D/group2/1/kernel_tensor.bin 8
