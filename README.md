@@ -10,18 +10,18 @@ Parallelization using multithreading (pthread) and AVX instructions.
 Parallelization using CUDA.
 
 ## Table of Contents:
-+ Data
++ data
   - group1 and gruop2: 
       - Contains 3 different input and kernel tensors
-+ Preprocessing
++ tools
   - im2col and col2im implementations in __C__ for __cpu__ and __CUDA__ for __GPU__
   - matrix multiplication implementations in __CUDA__ for __GPU__
-+ Implementations
++ src
   - `./src/conv2d.c`: Naive implementation of convolution in C language.
   - `./src/conv2d_quantized.c`: Quantizing the naive implemetation of convolution using lower precisions.
   - `./src/conv2d_avx.c`: Applying CPU vectorization using AVX instructions and Pthreads.
   - `./src/conv2d_cuda.c`: GPU vectorization using CUDA.
-+ Report
++ report.pdf
   - Includes details and analysis of implemented algorithms and quantization errors
   
 ## Usage
