@@ -36,7 +36,7 @@ They produce 1 binary file as output.
 
 For all binary files, following bytes after first 16 bytes are the real tensor data, which follows the memory order corresponding to the dimension rule written above.
 
-### Running command
+### Running guide 
 At `src/` directory,
 ```
 $ make
