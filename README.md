@@ -1,4 +1,5 @@
 # Quantized Conv2D layer implementation
+Final exam project for __CS492 Systems for Machine Learning__ course, Spring 2020, KAIST
 
 ## About
 This is an implementation of convolution operation using following optimization strategies:
