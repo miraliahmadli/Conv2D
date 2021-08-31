@@ -96,7 +96,7 @@ def conv2d_tf(X, W, output):
     
 
 def main():
-    with open("/home/mirali/Conv2D/group2/2/input_tensor.bin", mode='rb') as file:
+    with open("./data/group2/2/input_tensor.bin", mode='rb') as file:
         fileContent = file.read()
     n, h, w, c = struct.unpack('iiii', fileContent[:16])
     input_img = struct.unpack("f" * ((len(fileContent) - 16) // 4), fileContent[16:])
@@ -105,7 +105,7 @@ def main():
     print(X.min(), X.max())
     print(np.mean(X))
 
-    with open("/home/mirali/Conv2D/group2/2/kernel_tensor.bin", mode='rb') as file:
+    with open("./data/group2/2/kernel_tensor.bin", mode='rb') as file:
         fileContent = file.read()
     kh, kw, oc, ic = struct.unpack('iiii', fileContent[:16])
     kernel = struct.unpack("f" * ((len(fileContent) - 16) // 4), fileContent[16:])
@@ -114,7 +114,7 @@ def main():
     print(W.min(), W.max())
     print(np.mean(W))
 
-    with open("/home/mirali/Conv2D/prob1/output_tensor.bin", mode='rb') as file:
+    with open("./data/prob1/output_tensor.bin", mode='rb') as file:
         fileContent = file.read()
     on, oh, ow, out_c = struct.unpack('iiii', fileContent[:16])
     assert n==on

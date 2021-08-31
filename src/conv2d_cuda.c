@@ -22,8 +22,8 @@ Assume the stride is always 1. Use solely the primitive scalar operations (i.e.,
 #include "assert.h"
 #include <time.h>
 
-#include "../preprocessing/im2col.h"
-// #include "../preprocessing/col2im.h"
+#include "../tools/im2col.h"
+#include "../tools/matmul.h"
 
 float *input, *kernel, *output;
 float *input_col, *output_col;
@@ -195,16 +195,9 @@ double conv2d(){
     clock_t start, end;
     double cpu_time_used;
     
+    //  Convolution operation
     start = clock();
-    for (int i = 0; i < X; i++){
-        for (int j = 0; j < Z; j++){
-            float sum = 0.0f;
-            for (int k = 0; k < Y; k++) {
-                sum += kernel[i*Y + k] * input_col[k * Z + j];
-            }
-            output_col[i * Z + j] = sum;
-        }
-    }
+    matmul(output_col, kernel, input_col, X, Y, Z);
     end = clock();
 
     free(input_col);

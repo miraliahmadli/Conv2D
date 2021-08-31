@@ -1,9 +1,5 @@
-prob1/convolution
-prob2/convolution
-prob3/convolution
-prob4/convolution
-
-prob1/output_tensor.bin
-prob2/output_tensor.bin
-prob3/output_tensor.bin
-prob4/output_tensor.bin
+conv_vanila
+conv_cpu
+conv_avx
+conv_gpu
+src/output_tensor.bin

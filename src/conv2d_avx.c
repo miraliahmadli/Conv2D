@@ -24,25 +24,118 @@ Assume the stride is always 1. Use solely the primitive scalar operations (i.e.,
 #include <float.h>
 #include <math.h>
 #include <string.h>
-
-#include "../preprocessing/im2col.h"
-
-
+#include <immintrin.h>
+#include <pthread.h>
 #define min(X,Y) ((X) < (Y) ? (X) : (Y))
 #define max(X,Y) ((X) > (Y) ? (X) : (Y))
 
+#include "../tools/im2col.h"
+// #include "../tools/matmul.h"
 
 float *input, *kernel, *output, *output_q;
 float *input_col;
 int N, H, W, C;
 int KH, KW, OC, IC;
-float y_max, y_min;
-// float scale_factor, min_range, max_range;
-// float max_float = FLT_MAX;
+float y_max = 0.0f, y_min = 0.0f;
+int BLOCK;
+int NUM_THR;
+int MM, MN, MK;
 
-// int32_t *input32, *kernel32, *output32;
-// int16_t *input16, *kernel16, *output16;
-// int8_t *input8, *kernel8, *output8;
+/*
+    Convolution
+*/
+void *mult(void* arg)
+{
+    int *data = (int *)arg;
+    float sum = 0.0f;
+    int i = 0, j =0;
+
+    int row = *data;
+    // int col = *(data + 1);
+    float p[BLOCK];
+    __m256 col_8, row_8, res_8;
+    for (j = 0; j < BLOCK; j++){
+        sum = 0.0;
+        for (i = 0; i < MK; i = i + 8){
+            col_8 = _mm256_loadu_ps(&kernel[row * MK + i]);
+            row_8 = _mm256_loadu_ps(&input_col[j * MK + i]);
+            res_8 = _mm256_mul_ps(col_8, row_8);
+            for (int i = 0; i < 8; i++) sum += *(float *)&res_8[i];
+        }
+        p[j] = sum;
+    }
+    free(arg);
+    pthread_exit(p);
+}
+
+void matmul(float *out, int X, int Y, int Z){
+    MM = X; MN = Z; MK = Y; 
+    int size = MM * MN;
+    BLOCK = MN;
+
+    NUM_THR = size / BLOCK;
+    printf("BLOCK is %d\n", BLOCK);
+    printf("NUMTHR is %d\n", NUM_THR);
+
+    int i, j, t;
+  
+    printf("We are here\n");
+    pthread_t *threads;
+    threads = (pthread_t*)malloc(NUM_THR*sizeof(pthread_t));
+    printf("%d %d %d\n", MM, MN, MK);
+    int counter = 0;
+    for (i = 0; i < MM; i++){
+            int *data;
+            data = calloc(1,sizeof(int));
+            *data = i;
+            // *(data + 1) = j;
+            if(pthread_create(&threads[counter++], NULL, mult, (void*)data) != 0){
+                printf("Create failed at %d\n", i);
+                exit(-1);
+                return;
+            }
+    }
+    printf("We are here\n");
+    float *res;
+    for (i = 0; i < NUM_THR; i++) {
+        void *k;
+        pthread_join(threads[i], &k);
+        res = k;
+        j = 0;
+        while(j < BLOCK){
+            out[i * BLOCK + j] = res[j];
+            j++;
+        }
+    }
+}
+
+void matmul2(float *out, int X, int Y, int Z){
+    MM = X; MN = Z; MK = Y; 
+    int size = MM * MN;
+    BLOCK = MN;
+
+    NUM_THR = size / BLOCK;
+
+    int i, j, k, row, col;
+    float sum;
+  
+    int counter = 0;
+    for (row = 0; row < MM; row++){
+        for (col = 0; col < MN; col++){
+            __m256 col_8, row_8, res_8;
+            sum = 0.0;
+            for (i = 0; i < MK; i = i + 8){
+                col_8 = _mm256_loadu_ps(&kernel[row * MK + i]);
+                row_8 = _mm256_loadu_ps(&input_col[col * MK + i]);
+                res_8 = _mm256_mul_ps(col_8, row_8);
+                for (int i = 0; i < 8; i++) sum += *(float *)&res_8[i];
+            }
+            out[row * MN + col] = sum;
+            if(y_max < sum) y_max = sum;
+            if(y_min > sum) y_min = sum;
+        }
+    }
+}
 
 #define QUANTIZE(max_range, min_range, input, scale_factor) roundf(min(max_range, max(min_range, input)) * scale_factor)
 
@@ -57,27 +150,6 @@ float nrmse(){
     result = sqrt(result / N*H*W*OC) / diff;
     return result;
 }
-
-//  calculate scaling factor
-void scaling(int P, float *array, int size){
-    // min_range = FLT_MAX;
-    // max_range = FLT_MIN;
-    // for(int i = 0; i < size; i++){
-    //     if(array[i] < min_range) min_range = array[i];
-    //     if(array[i] > max_range) max_range = array[i];
-    // }
-
-    long min_T = 1 << (P-1);
-    long max_T = (1 << (P-1)) - 1;
-
-    // const float scale_factor_from_min_side =
-    //     (min_T * min_range > 0) ? min_T / min_range : max_float;
-    // const float scale_factor_from_max_side =
-    //     (max_T * max_range > 0) ? max_T / max_range : max_float;
-
-    // scale_factor = min(scale_factor_from_min_side, scale_factor_from_max_side);
-}
-
 
 //  reads binary data from given files to input and kernel arrays
 void read_data(const char *input_file, const char *kernel_file){
@@ -124,7 +196,7 @@ void read_data(const char *input_file, const char *kernel_file){
     float *input_pre = (float *)malloc(N*H*W*C*4);
 
     //  A is (KH*KW*C) * (N*H*W) matrix
-    input_col = (float *)malloc((KH*KW*C) * (N*H*W) * 4);
+    float *input_col_T = (float *)malloc((KH*KW*C) * (N*H*W) * 4);
     int pad = (KH - 1)/2;
 
     //  read input image
@@ -152,8 +224,18 @@ void read_data(const char *input_file, const char *kernel_file){
     free(input_pre);
 
     // apply im2col algorithm
-    im2col_cpu(input, C, H, W, KH, 1, pad, input_col);
+    im2col_cpu(input, C, H, W, KH, 1, pad, input_col_T);
     free(input);
+
+    input_col = (float *)malloc((KH*KW*C) * (N*H*W) * 4);
+    int cols = KW*KH*C;
+    int rows = H*W*N;
+    for(int x = 0; x < cols; x++){
+        for(int y = 0; y < rows; y++){
+            input_col[y*cols + x] = input_col_T[x*rows + y];
+        }
+    }
+    free(input_col_T);
 
     // read filters
     // kernel = (float *)malloc(KH*KW*OC*IC*4);
@@ -233,86 +315,12 @@ double conv2d(int P){
     clock_t start, end, ovr_start, ovr_end, q_start, q_end;
     double cpu_time_used, time_overhead, q_cpu_time_used;
     time_overhead = 0.0;
-    float y_max = FLT_MIN;
-    float y_min = FLT_MAX;
-    
+
+    //  Convolution operation
     start = clock();
-    for (int i = 0; i < X; i++){
-        for (int j = 0; j < Z; j++){
-            float sum = 0.0f;
-            for (int k = 0; k < Y; k++) {
-                sum += kernel[i*Y + k] * input_col[k * Z + j];
-            }
-            output_col[i * Z + j] = sum;
-            if(y_max < sum) y_max = sum;
-            if(y_min > sum) y_min = sum;
-        }
-    }
+    matmul2(output_col, X, Y, Z);
     end = clock();
-    printf("MAX and MIN results \ny_max = %f, \ny_min = %f\n", y_max, y_min);
 
-    //  Quantization starts
-    //  start from 0 because of padding
-    if(P == 8){
-        float min_in = -25.0f;
-        float max_in = 25.0f;
-
-        int8_t max_int = 127;
-        int8_t min_int = -128;
-
-        float scale1 = min((float)max_int / max_in, (float)min_int / min_in);
-        // float scale1 = 2.0f;
-        printf("SCALE = %f\n", scale1);
-        // float scale2 = max_int - min_int;
-        float scale2 = 256;
-        printf("SCALE2 = %f\n", scale2);
-        
-        int8_t *q_input = (int8_t *)malloc(Y*Z*sizeof(int8_t));
-        int8_t *q_kernel = (int8_t *)malloc(Y*X*sizeof(int8_t));
-        int16_t *q_output = (int16_t *)malloc(Z*X*sizeof(int16_t));
-        float *r_output = (float *)malloc(Z*X*sizeof(float));
-        ovr_start = clock();
-        for(int i = 0; i < Y*Z; i++) q_input[i] = (int8_t) round(min(max_int, max(min_int, input_col[i] * scale1)));
-        for(int i = 0; i < Y*X; i++) q_kernel[i] = (int8_t) round(min(max_int, max(min_int, kernel[i] * scale2)));
-        ovr_end = clock();
-        time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
-
-
-        q_start = clock();
-        for (int i = 0; i < X; i++){
-            for (int j = 0; j < Z; j++){
-                int16_t sum = 0;
-                for (int k = 0; k < Y; k++) {
-                    sum += q_kernel[i*Y + k] * q_input[k * Z + j];
-                }
-                q_output[i * Z + j] = sum;
-            }
-        }
-        q_end = clock();
-        q_cpu_time_used += ((double) (q_end - q_start)) / CLOCKS_PER_SEC;
-        printf("Quantized Convolution operation took %f seconds to execute\n", q_cpu_time_used);
-
-        ovr_start = clock();
-        for(int i = 0; i < Z*X; i++) r_output[i] = (float) (q_output[i] / (scale1 * scale2));
-        ovr_end = clock();
-        time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
-        printf("Overhead time is: %f\n", time_overhead);
-        
-        // for(int i = 0; i < 10; i++) printf("REAL, QUANT, DEQUANT: %f %d %f\n", output_col[i], q_output[i], r_output[i]);
-        float diff = y_max - y_min;
-        float result = 0.0f;
-        for(int i = 0; i < Z*X; i++){
-            result +=  pow(output_col[i] - r_output[i], 2);
-        }
-
-        result = sqrt(result / Z*X) / diff;
-        printf("NRMSE = %f\n", result);
-        free(q_input);
-        free(q_output);
-        free(q_kernel);
-        free(r_output);
-    }
-    
     if(P == 16){
         float min_in = -25.0f;
         float max_in = 25.0f;
@@ -340,8 +348,27 @@ double conv2d(int P){
         for (int i = 0; i < X; i++){
             for (int j = 0; j < Z; j++){
                 int32_t sum = 0;
-                for (int k = 0; k < Y; k++) {
-                    sum += q_kernel[i*Y + k] * q_input[k * Z + j];
+                __m256i col_8, row_8, res_8;
+                for (int k = 0; k < Y; k = k + 16){
+                    col_8 = _mm256_loadu_si256((__m256i *)&q_kernel[i * MK + k]);
+                    row_8 = _mm256_loadu_si256((__m256i *)&q_input[j * MK + k]);
+                    // res_8 = _mm256_mullo_epi16(col_8, row_8);
+                    sum +=((int16_t) _mm256_extract_epi16(col_8, 0) * (int16_t) _mm256_extract_epi16(row_8, 0))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 1) * (int16_t) _mm256_extract_epi16(row_8, 1))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 2) * (int16_t) _mm256_extract_epi16(row_8, 2))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 3) * (int16_t) _mm256_extract_epi16(row_8, 3))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 4) * (int16_t) _mm256_extract_epi16(row_8, 4))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 5) * (int16_t) _mm256_extract_epi16(row_8, 5))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 6) * (int16_t) _mm256_extract_epi16(row_8, 6))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 7) * (int16_t) _mm256_extract_epi16(row_8, 7))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 8) * (int16_t) _mm256_extract_epi16(row_8, 8))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 9) * (int16_t) _mm256_extract_epi16(row_8, 9))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 10) * (int16_t) _mm256_extract_epi16(row_8, 10))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 11) * (int16_t) _mm256_extract_epi16(row_8, 11))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 12) * (int16_t) _mm256_extract_epi16(row_8, 12))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 13) * (int16_t) _mm256_extract_epi16(row_8, 13))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 14) * (int16_t) _mm256_extract_epi16(row_8, 14))
+                        + ((int16_t) _mm256_extract_epi16(col_8, 15) * (int16_t) _mm256_extract_epi16(row_8, 15));
                 }
                 q_output[i * Z + j] = sum;
             }
@@ -371,11 +398,12 @@ double conv2d(int P){
     }
 
     if(P == 32){
+        //round(min(max_range, max(min_range, input)) * scale_factor);
         float min_in = -25.0f;
         float max_in = 25.0f;
 
         int32_t max_int = 2147483647;//(1 << 31) - 1;
-        int32_t min_int = -2147483648;//1 << 31;
+        int32_t min_int = -2147483647;//1 << 31;
 
         float scale1 = ((long) max_int - (long) min_int) / (max_in - min_in);
         printf("SCALE1 = %f\n", scale1);
@@ -393,12 +421,24 @@ double conv2d(int P){
         ovr_end = clock();
         time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
 
+
         q_start = clock();
         for (int i = 0; i < X; i++){
             for (int j = 0; j < Z; j++){
                 int64_t sum = 0;
-                for (int k = 0; k < Y; k++) {
-                    sum += (long)q_kernel[i*Y + k] * (long)q_input[k * Z + j];
+                __m256i col_8, row_8, res_8;
+                for (int k = 0; k < Y; k = k + 8){
+                    col_8 = _mm256_loadu_si256((__m256i *)&q_kernel[i * MK + k]);
+                    row_8 = _mm256_loadu_si256((__m256i *)&q_input[j * MK + k]);
+                    // res_8 = _mm256_mullo_epi32(col_8, row_8);
+                    sum +=((int32_t) _mm256_extract_epi16(col_8, 0) * (int32_t) _mm256_extract_epi16(row_8, 0))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 1) * (int32_t) _mm256_extract_epi16(row_8, 1))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 2) * (int32_t) _mm256_extract_epi16(row_8, 2))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 3) * (int32_t) _mm256_extract_epi16(row_8, 3))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 4) * (int32_t) _mm256_extract_epi16(row_8, 4))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 5) * (int32_t) _mm256_extract_epi16(row_8, 5))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 6) * (int32_t) _mm256_extract_epi16(row_8, 6))
+                        + ((int32_t) _mm256_extract_epi16(col_8, 7) * (int32_t) _mm256_extract_epi16(row_8, 7));
                 }
                 q_output[i * Z + j] = sum;
             }
@@ -407,8 +447,9 @@ double conv2d(int P){
         q_cpu_time_used += ((double) (q_end - q_start)) / CLOCKS_PER_SEC;
         printf("Quantized Convolution operation took %f seconds to execute\n", q_cpu_time_used);
 
+
         ovr_start = clock();
-        for(int i = 0; i < Z*X; i++) r_output[i] = (float) (q_output[i] / (scale1 * scale2));
+        for(int i = 0; i < Z*X; i++) r_output[i] = (float) (q_output[i] / (scale1 * scale2));//pow(scale, 2));
         ovr_end = clock();
         time_overhead += ((double) (ovr_end - ovr_start)) / CLOCKS_PER_SEC;
         printf("Overhead time is: %f\n", time_overhead);
@@ -444,7 +485,6 @@ double conv2d(int P){
         }
     }
     free(output_col);
-
     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
     return cpu_time_used;
 }
@@ -453,9 +493,10 @@ double conv2d(int P){
 int main(int argc, char *argv[]){
     const char* precision = argv[3];
     int P = 0;
-    if(!strcmp(precision, "32")) P = 32;
-    else if(!strcmp(precision, "16")) P = 16;
-    else if(!strcmp(precision, "8")) P = 8;
+
+    if(!strcmp(precision, "FP32")) P = 0;
+    else if(!strcmp(precision, "INT32")) P = 32;
+    else if(!strcmp(precision, "INT16")) P = 16;
     else{
         printf("Wrong value is given: %s, precision should be 8, 16, or 32", precision);
         exit(80);
